@@ -1,0 +1,48 @@
+{
+  "workspaces": {
+    "primary": "REPLACE_WITH_PRIMARY_WORKSPACE",
+    "scoped": "REPLACE_WITH_SCOPED_WORKSPACE",
+    "sample": "REPLACE_WITH_SAMPLE_WORKSPACE"
+  },
+  "review": {
+    "entity_type": "REPLACE_WITH_ENTITY_TYPE",
+    "required_domains": [
+      "REPLACE_WITH_REQUIRED_DOMAIN"
+    ],
+    "no_review_domain_count": 0,
+    "custom_field_total": 0,
+    "in_use_count": 0,
+    "watchlist_count": 0,
+    "sample_size": 1,
+    "comparison_fields": [
+      {
+        "label": "REPLACE_WITH_FIELD_LABEL",
+        "field": "REPLACE_WITH_FIELD_KEY"
+      }
+    ]
+  },
+  "scoping": {
+    "domain_a": "REPLACE_WITH_DOMAIN_A",
+    "domain_b": "REPLACE_WITH_DOMAIN_B",
+    "field": "REPLACE_WITH_SHARED_FIELD_KEY",
+    "expected_label_a": "REPLACE_WITH_EXPECTED_LABEL_A",
+    "expected_label_b": "REPLACE_WITH_EXPECTED_LABEL_B"
+  },
+  "legacy_claims": [
+    {
+      "field": "REPLACE_WITH_LEGACY_FIELD_KEY",
+      "label": "REPLACE_WITH_LEGACY_LABEL"
+    }
+  ],
+  "drift": {
+    "renamed_count": 0,
+    "unrecorded_count": 0
+  },
+  "evidence": {
+    "domain": "REPLACE_WITH_EVIDENCE_DOMAIN",
+    "field_label": "REPLACE_WITH_EVIDENCE_FIELD_LABEL"
+  },
+  "watchlist": {
+    "domain": "REPLACE_WITH_WATCHLIST_DOMAIN"
+  }
+}

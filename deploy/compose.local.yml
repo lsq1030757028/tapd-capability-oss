@@ -1,0 +1,61 @@
+name: tapd-capability-staging-local
+
+services:
+  tapd-capability:
+    image: ${TAPD_CAPABILITY_IMAGE:-tapd-capability:staging-local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        SOURCE_REVISION: ${TAPD_CAPABILITY_SOURCE_REVISION:?TAPD_CAPABILITY_SOURCE_REVISION is required}
+    command:
+      - python
+      - adapters/mcp_server.py
+      - --transport
+      - http
+      - --host
+      - 0.0.0.0
+      - --port
+      - "3796"
+    user: "10001:10001"
+    init: true
+    read_only: true
+    ports:
+      - "127.0.0.1:3796:3796"
+    environment:
+      TAPD_CAPABILITY_HOME: /data
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - tapd-capability-data:/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import json,urllib.request;
+          assert json.load(urllib.request.urlopen('http://127.0.0.1:3796/healthz', timeout=2)) == {'status': 'ok'}
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    restart: unless-stopped
+
+volumes:
+  tapd-capability-data:

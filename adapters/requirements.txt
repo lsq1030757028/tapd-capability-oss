@@ -1,0 +1,4 @@
+# Pinned for AC-09 (clean-runtime reproducibility). No launch-time resolution:
+# install once into .agents/.venvs/tapd-capability, never resolve from PyPI at start.
+# streamable-http 模式不需要额外依赖：starlette/uvicorn 是 mcp 的核心依赖，已随它装好。
+mcp==1.26.0

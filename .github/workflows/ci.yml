@@ -1,0 +1,132 @@
+name: TAPD capability CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tapd-capability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  SOURCE_REF: ${{ github.event_name == 'pull_request' && format('refs/heads/{0}', github.head_ref) || github.ref }}
+  PYTHON_BUILD_IMAGE: python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
+  GIT_REPO_URL: https://github.com/${{ github.repository }}.git
+
+jobs:
+  build-only-gate:
+    name: pinned MCP + Docker candidate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate event-bound GitHub source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::SOURCE_SHA must be a full lowercase 40-character SHA"
+            exit 64
+          }
+          [[ "$SOURCE_REF" =~ ^refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || {
+            echo "::error::SOURCE_REF must be a safe refs/heads branch ref"
+            exit 64
+          }
+          if [[ "$SOURCE_REF" == *".."* || "$SOURCE_REF" == *"//"* || \
+                "$SOURCE_REF" == *"/."* || "$SOURCE_REF" == *".lock/"* || \
+                "$SOURCE_REF" == *"@{"* || "$SOURCE_REF" == */ || \
+                "$SOURCE_REF" == *. || "$SOURCE_REF" == *.lock ]]; then
+            echo "::error::SOURCE_REF contains a forbidden git ref form"
+            exit 64
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            test "$SOURCE_SHA" = "${{ github.event.pull_request.head.sha }}"
+          else
+            test "$SOURCE_SHA" = "$GITHUB_SHA"
+          fi
+
+      - name: Checkout exact event source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Credential scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          if git grep -nEI '(gh[pousr]_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9]{30,}|xox[baprs]-[A-Za-z0-9-]{20,})' -- .; then
+            echo "::error::provider-token-shaped plaintext found"
+            fail=1
+          fi
+          if git grep -nEI '(TAPD_ACCESS_TOKEN|access_token|api_key|apikey|password|secret)[[:space:]]*[:=][[:space:]]*.[A-Za-z0-9_-]{20,}.' -- . ':!tests/' ':!.github/'; then
+            echo "::error::credential-like variable appears to contain a plaintext value"
+            fail=1
+          fi
+          if git grep -nEI '\-\-(token|access-token|credential)[[:space:]=]' -- . ':!.github/'; then
+            echo "::error::credentials must not travel in command-line arguments"
+            fail=1
+          fi
+          test "$fail" -eq 0
+
+      - name: Pinned MCP regression and Docker test target
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          test_tag="tapd-capability-ci-test:${SOURCE_SHA}"
+          docker build --pull --target test \
+            --iidfile ci-artifacts/test-image.iid \
+            --tag "$test_tag" .
+          docker run --rm \
+            --volume "$PWD:/workspace" \
+            --workdir /workspace \
+            "$PYTHON_BUILD_IMAGE" \
+            sh -ec 'python -m pip install --quiet --requirement adapters/requirements.txt pytest==8.4.1; python -c "from mcp.server.fastmcp import FastMCP"; python -m pytest tests/ -q --ignore=tests/acceptance_live.py --junitxml=ci-artifacts/mcp-full-suite.xml'
+
+      - name: Docker runtime candidate and revision metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_tag="tapd-capability-ci-runtime:${SOURCE_SHA}"
+          docker build --pull --target runtime \
+            --build-arg "SOURCE_REVISION=$SOURCE_SHA" \
+            --iidfile ci-artifacts/runtime-image.iid \
+            --tag "$runtime_tag" .
+          runtime_label="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$runtime_tag")"
+          test "$runtime_label" = "$SOURCE_SHA"
+          docker run --rm \
+            --volume "$PWD:/workspace" \
+            --workdir /workspace \
+            "$PYTHON_BUILD_IMAGE" \
+            python ci/write_image_metadata.py \
+              --output ci-artifacts/image-metadata.json \
+              --repository "$GIT_REPO_URL" \
+              --source-ref "$SOURCE_REF" \
+              --source-revision "$SOURCE_SHA" \
+              --test-image-id "$(tr -d '\r\n' < ci-artifacts/test-image.iid)" \
+              --runtime-image-id "$(tr -d '\r\n' < ci-artifacts/runtime-image.iid)" \
+              --runtime-label-revision "$runtime_label"
+
+      - name: Upload build-only evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tapd-capability-ci-${{ env.SOURCE_SHA }}
+          path: ci-artifacts/
+          if-no-files-found: warn

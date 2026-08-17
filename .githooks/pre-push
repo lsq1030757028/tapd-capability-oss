@@ -1,0 +1,20 @@
+#!/bin/sh
+# 补偿闸：GitHub 免费私有仓拿不到保护分支，必需检查无法在平台侧强制。
+# 这道是客户端闸，能被 --no-verify 绕过，不等价于平台门禁——它只降低误推概率。
+# 平台侧真门禁的前提见 README「CI 与门禁现状」。
+set -e
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+echo "[pre-push] 离线测试套件"
+python -m pytest tests/ -q --ignore=tests/acceptance_live.py
+
+echo "[pre-push] 凭据泄漏扫描"
+fail=0
+git grep -nEI '(gh[pousr]_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9]{30,}|xox[baprs]-[A-Za-z0-9-]{20,})' -- . && fail=1
+git grep -nEI '(TAPD_ACCESS_TOKEN|access_token|api_key|apikey|password|secret)[[:space:]]*[:=][[:space:]]*.[A-Za-z0-9_-]{20,}.' -- . ':!tests/' ':!.github/' ':!.githooks/' && fail=1
+git grep -nEI '\-\-(token|access-token|credential)[[:space:]=]' -- . ':!.github/' ':!.githooks/' && fail=1
+[ "$fail" -eq 0 ] || { echo "[pre-push] 发现疑似明文凭据，拒绝推送"; exit 1; }
+
+echo "[pre-push] 通过"

@@ -1,0 +1,16 @@
+.git
+.gitignore
+.gitattributes
+.githooks
+.venv
+venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+credentials
+**/credentials
+**/*.token
+contracts
+specs
+tool.json
+agent-lab-runs
